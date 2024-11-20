@@ -18,6 +18,6 @@ jobs:
 
     - name: npm install, make test-coverage
       run: |
-        python3 -m pip install -qqq PyGithub
+        python3 -m pip install coverage
     - name: Coveralls
       uses: coverallsapp/github-action@v2
