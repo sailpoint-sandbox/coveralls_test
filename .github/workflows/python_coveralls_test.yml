@@ -19,6 +19,6 @@ jobs:
     - name: npm install, make test-coverage
       run: |
         pip install pytest pytest-cov
-        python -m pytest --cov=./myapp --cov-report xml
+        python -m pytest --cov=. --cov-report xml
     - name: Coveralls
       uses: coverallsapp/github-action@v2
