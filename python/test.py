@@ -1,163 +1,150 @@
-""" Quality Metrics Computation."""
-
-import argparse
-import json
+import logging
 import os
-import tarfile
-from collections.abc import Iterable
-from typing import Any, Optional
+from typing import Dict, List
 
-import numpy as np
+import boto3
 import pandas as pd
 
-from outliers.metrics.intra_prob_dist import (
-    AggregationType,
-    CoreType,
-    DistanceType,
-    compute_intra_distance_metric,
-)
-from outliers.metrics.neighbor_count_udfs import AggType, compute_neighbor_count_metric
-from outliers.utils.error_handler import UnactionableError, persist_error
-from outliers.utils.logging import get_logger
-from outliers.utils.train_metric_utils import (
-    create_report,
-    exp_log_model_metrics,
-    printable_model_metrics,
-    put_model_metrics,
-    seed_default_value,
-)
+aws_region = os.environ.get("AWS_REGION")
 
-customer_id = os.environ.get("CUSTOMER_ID", "unknown")
-customer_pod = os.environ.get("POD", "unknown")
-region = os.environ.get("AWS_REGION")
-logger = get_logger("ModelMetrics", customer_id=customer_id, pod=customer_pod)
-
-# Set Panda's dislay params
-pd.set_option("display.max_rows", 10)
-pd.set_option("display.max_columns", 20)
-pd.set_option("display.width", 1000)
+# Please note that all metrics' properties, i.e. MetricName and dimensions' names,
+# must be in PascalCase. That's to satisfy a tool used by the Periscope team in exporting
+# metrics from CloudWatch to Prometheus (ref: https://github.com/ZipRecruiter/cloudwatching/blob/master/pkg/exportcloudwatch/strings.go#L8).
 
 
-def compute_model_quality_metrics(df: pd.DataFrame, f_names: list[str]) -> Iterable[tuple[str, float]]:
-    """Computes model quality metrics
+def snake_to_pascal_case(in_str: str) -> str:
+    "Converts 'feature_name' to 'FeatureName'"
+    return in_str.replace("_", " ").title().replace(" ", "")
 
-    Arguments:
-        df: Dataframe containg all needed features and model computed scores. Only outliers have scores.
-        f_names: List of feature names that were used in the model training.
 
-    Returns:
-        Iterator of (metric_name, metric_value) for each metric computed.
-        In case there are some problems with computing the metric, the value is set to x_BAD_METRIC_VALUE, often 101.
-
+def get_metric_dimensions(customer_id: str, customer_name: str, pod: str, lifecycle: str) -> List[Dict]:
     """
-    #### Intra Probability Distance Metric ####
-    distance_types = (DistanceType.AbsMean, DistanceType.L2)
-    agg_types = (AggregationType.Mean,)
-    core_types = (CoreType.Mean,)
-    try:
-        for m_name, m_value in compute_intra_distance_metric(df, f_names, distance_types, agg_types, core_types):
-            yield m_name, round(m_value, 3)
-    except Exception as e:
-        logger.error(f"Error computing Intra Probability Distance Metric. Exception: {e}")
-
-    #### Neighbor Count Metric ####
-    radii = np.arange(0.05, 2.0, 0.15)
-    agg_type = AggType.Mean
-    try:
-        for m_name, m_value in compute_neighbor_count_metric(df, f_names, radii, agg_type=agg_type):
-            yield (m_name, round(m_value, 3))
-    except Exception as e:
-        logger.error(f"Error computing Neighbor Count Metric. Exception: {e}")
-
-    return
-
-
-def store_metrics_artifacts(output_dir: str, report_dict: dict[str, dict]) -> None:
-    logger.info(report_dict)
-    evaluation_path = os.path.join(output_dir, "evaluation.json")
-    logger.info(f"Writing out quality metrics evaluation report to {evaluation_path}")
-    with open(evaluation_path, "w") as f:
-        json.dump(report_dict, f)
-
-
-def compute_metrics(
-    model_dir: str,
-    exp: Optional[Any] = None,
-) -> None:
-    """Computes the quality metrics. Currently intra probability distance and neighbor count metric.
-
-    After training and determinig outliers, we compute some descriptive and statistical metrics
-    to qualify how good the model performed. These are written both to stdout and a file.
-
-    Arguments:
-        model_dir: Path to a directory where the model artifacts are written to.
-        exp: Experiment object to log metrics to.
+    Returns a list of metric dimensions for a given customer_id and pod.
+    Used for publishing metrics to Cloudwatch.
     """
-    predictions_file_path = os.path.join(model_dir, "predictions.csv")
-    predictions = pd.read_csv(predictions_file_path)
-
-    columns_path = os.path.join(model_dir, "features.json")
-    with open(columns_path) as f:
-        feature_cols = json.load(f)
-
-    metrics_path = os.path.join(model_dir, "evaluation.json")
-    with open(metrics_path) as f:
-        metrics = json.load(f)
-
-    qa_metrics = {}
-    for metric_name, metric_value in compute_model_quality_metrics(predictions, feature_cols):
-        put_model_metrics(logger, metric_name=metric_value)
-        qa_metrics[metric_name] = metric_value
-
-    logger.info(printable_model_metrics(**qa_metrics))
-
-    report_dict = create_report(**qa_metrics)
-    metrics["evaluation_metrics"].update(report_dict["evaluation_metrics"])
-
-    if exp is not None:
-        exp_log_model_metrics(exp, **qa_metrics)
-
-    store_metrics_artifacts(output_dir=model_dir, report_dict=metrics)
+    return [
+        {"Name": "CustomerId", "Value": customer_id},
+        {"Name": "CustomerName", "Value": customer_name},
+        {"Name": "Pod", "Value": pod},
+        {"Name": "Lifecycle", "Value": lifecycle},
+    ]
 
 
-def extract_model_artifacts(
-    model_dir: str,
-) -> None:
-    # Extract inputs from training step:
-    # ['model.tar.gz', 'predictions.csv', 'features.json', 'evaluation.json', 'model.joblib', 'thresholds.json']
-    model_path = os.path.join(model_dir, "model.tar.gz")
-    if os.path.exists(model_path):
-        model_artifacts_path = os.path.join(model_dir, "artifacts")
-        if not os.path.exists(model_artifacts_path):
-            os.makedirs(model_artifacts_path, exist_ok=True)
-        tar = tarfile.open(model_path)
-        tar.extractall(path=model_artifacts_path)
-        tar.close()
-        return model_artifacts_path
-    return model_dir
+def publish_cloudwatch_metrics(metrics_data: List[Dict], namespace: str) -> None:
+    """
+    Publishes metrics to Cloudwatch under specified namespace
+    """
+    logging.info(f"Sending metrics: {metrics_data}")
+    cw_client = boto3.client("cloudwatch", region_name=aws_region)
+    cw_client.put_metric_data(MetricData=metrics_data, Namespace=namespace)
 
 
-def main():
-    logger.info("Starting Metrics Computation...")
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model-dir", type=str, default=os.environ.get("SM_MODEL_DIR", "/opt/ml/model/"))
-    parser.add_argument("--seed", type=int, default=seed_default_value())
-    args = parser.parse_args()
+def prepare_feature_handling_metrics(
+    customer_id: str,
+    customer_name: str,
+    dropped_identities_count: int,
+    all_nan_identities_count: int,
+    imputed_values_counts: Dict[str, int],
+    pod: str,
+) -> List[Dict]:
+    """
+    Prepares metrics for feature handling
+    """
 
-    logger.info(f"Received arguments {args}")
-    model_dir = extract_model_artifacts(args.model_dir)
+    dimensions = get_metric_dimensions(customer_id, customer_name, pod, "Scoring")
 
-    compute_metrics(model_dir)
+    metric_data = [
+        {
+            "MetricName": snake_to_pascal_case(feature_name),
+            "Dimensions": dimensions,
+            "Unit": "Count",
+            "Value": int(nan_count),
+        }
+        for (feature_name, nan_count) in imputed_values_counts.items()
+    ]
+    metric_data.append(
+        {
+            "MetricName": "DroppedIdentities",
+            "Dimensions": dimensions,
+            "Unit": "Count",
+            "Value": dropped_identities_count,
+        }
+    )
+    metric_data.append(
+        {
+            "MetricName": "AllNaNFeaturesIdentities",
+            "Dimensions": dimensions,
+            "Unit": "Count",
+            "Value": all_nan_identities_count,
+        }
+    )
+    return metric_data
 
-    logger.info("Done.")
+
+def prepare_feature_metrics(customer_id: str, customer_name: str, features: pd.DataFrame, pod: str) -> List[Dict]:
+    """
+    Prepares metrics for feature handling
+    """
+
+    dimensions = get_metric_dimensions(customer_id, customer_name, pod, "Scoring")
+
+    nan_counts = features.isna().sum(axis=0).to_dict()
+    return [
+        {
+            "MetricName": snake_to_pascal_case(feature_name),
+            "Dimensions": dimensions,
+            "Unit": "Count",
+            "Value": int(nan_count),
+        }
+        for (feature_name, nan_count) in nan_counts.items()
+    ]
 
 
-if __name__ == "__main__":
-    try:
-        main()
-    except UnactionableError as ue:
-        persist_error(ue)
-        logger.exception("Unactionable error. Soft exit. Please see logs for details.")
-    except Exception:
-        logger.exception("Global error. Please see file logs for details.")
-        raise
+def prepare_lso_metrics(
+    customer_id: str,
+    customer_name: str,
+    threshold: float,
+    outliers_count: int,
+    identities_count: int,
+    outliers_ratio: float,
+    assigned_entitlements_count: int,
+    pod: str,
+) -> List[Dict]:
+    """
+    Prepares metrics for LSO
+    """
+
+    dimensions = get_metric_dimensions(customer_id, customer_name, pod, "Scoring")
+
+    return [
+        {
+            "MetricName": "Threshold",
+            "Dimensions": dimensions,
+            "Unit": "None",
+            "Value": float(threshold),
+        },
+        {
+            "MetricName": "OutliersCount",
+            "Dimensions": dimensions,
+            "Unit": "Count",
+            "Value": int(outliers_count),
+        },
+        {
+            "MetricName": "TotalIdentitiesCount",
+            "Dimensions": dimensions,
+            "Unit": "Count",
+            "Value": int(identities_count),
+        },
+        {
+            "MetricName": "OutliersRatio",
+            "Dimensions": dimensions,
+            "Unit": "None",
+            "Value": float(outliers_ratio),
+        },
+        {
+            "MetricName": "TotalAssignedEntitlementsCount",
+            "Dimensions": dimensions,
+            "Unit": "Count",
+            "Value": int(assigned_entitlements_count),
+        },
+    ]
