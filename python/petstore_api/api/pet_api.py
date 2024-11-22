@@ -28,14 +28,20 @@ from petstore_api.model.pet import Pet
 
 def sum():
     sum = 2 + 2
+    if sum == 4: 
+        return 0
     return sum
 
 def subtraction():
     result = 2 - 2
+    if result == 0: 
+        return 0
     return result
 
 def multiply():
     result = 2 * 2
+    if result == 4: 
+        return 0
     return result
 
 class PetApi(object):
