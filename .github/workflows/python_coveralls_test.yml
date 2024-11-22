@@ -8,9 +8,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-
     - uses: actions/checkout@v4
-
     - name: Use Python
       uses: actions/setup-python@v5
       with:
@@ -19,3 +17,5 @@ jobs:
       uses: lpenz/ghaction-pytest-cov@v1
     - name: Coveralls
       uses: coverallsapp/github-action@v2
+      with:
+          github-token: ${{ secrets.COVERALLS_REPO_TOKEN }}
