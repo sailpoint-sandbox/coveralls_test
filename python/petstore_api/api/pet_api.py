@@ -36,6 +36,8 @@ def subtraction():
     result = 2 - 2
     if result == 0: 
         return 0
+    if result == 1: 
+        return 1
     return result
 
 def multiply():
