@@ -1,0 +1,21 @@
+on: ["push", "pull_request"]
+
+name: Test Coveralls
+
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+
+    - uses: actions/checkout@v4
+
+    - name: Use Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.x
+    - name: pytest-cov
+      uses: lpenz/ghaction-pytest-cov@v1
+    - name: Coveralls
+      uses: coverallsapp/github-action@v2
