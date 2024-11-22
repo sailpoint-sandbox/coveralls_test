@@ -1,1 +1,2 @@
 # coveralls_test
+[![Coverage Status](https://coveralls.io/repos/github/sailpoint-sandbox/coveralls_test/badge.svg?branch=main)](https://coveralls.io/github/sailpoint-sandbox/coveralls_test?branch=main)
