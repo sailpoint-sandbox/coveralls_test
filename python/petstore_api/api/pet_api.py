@@ -38,6 +38,8 @@ def subtraction():
         return 0
     if result == 1: 
         return 1
+    if result == 3: 
+        return 3
     return result
 
 def multiply():
