@@ -50,6 +50,8 @@ def subtraction():
         return 3
     if result == 5: 
         return 5
+    if result == 15: 
+        return 15 
     return result
 
 def multiply():
