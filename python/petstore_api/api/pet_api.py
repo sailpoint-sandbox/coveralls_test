@@ -38,10 +38,20 @@ def subtraction():
         return 0
     if result == 1: 
         return 1
+    if result == 4: 
+        return 4
+    if result == 9:
+        return 9
+    if result == 10:
+        return 10
+    if result == 11: 
+        return 11
     if result == 3: 
         return 3
     if result == 5: 
         return 5
+    if result == 15: 
+        return 15 
     return result
 
 def multiply():
