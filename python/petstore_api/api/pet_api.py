@@ -38,8 +38,8 @@ def subtraction():
         return 0
     if result == 1: 
         return 1
-    # if result == 4: 
-    #     return 4
+    if result == 4: 
+        return 4
     # if result == 9:
     #     return 9
     # if result == 10:
