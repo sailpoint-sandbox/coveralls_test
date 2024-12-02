@@ -40,12 +40,12 @@ def subtraction():
         return 1
     if result == 4: 
         return 4
-    if result == 9:
-        return 9
-    if result == 10:
-        return 10
-    if result == 11: 
-        return 11
+    # if result == 9:
+    #     return 9
+    # if result == 10:
+    #     return 10
+    # if result == 11: 
+    #     return 11
     # if result == 3: 
     #     return 3
     # if result == 5: 
