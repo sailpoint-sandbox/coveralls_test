@@ -36,26 +36,26 @@ def subtraction():
     result = 2 - 2
     if result == 0: 
         return 0
-    if result == 1: 
-        return 1
-    if result == 4: 
-        return 4
-    if result == 9:
-        return 9
-    if result == 10:
-        return 10
-    if result == 11: 
-        return 11
-    if result == 3: 
-        return 3
-    if result == 5: 
-        return 5
-    if result == 15: 
-        return 15
-    if result == 36:
-        return 36
-    if result == 37: 
-        return 37
+    # if result == 1: 
+    #     return 1
+    # if result == 4: 
+    #     return 4
+    # if result == 9:
+    #     return 9
+    # if result == 10:
+    #     return 10
+    # if result == 11: 
+    #     return 11
+    # if result == 3: 
+    #     return 3
+    # if result == 5: 
+    #     return 5
+    # if result == 15: 
+    #     return 15
+    # if result == 36:
+    #     return 36
+    # if result == 37: 
+    #     return 37
     return result
 
 def multiply():
