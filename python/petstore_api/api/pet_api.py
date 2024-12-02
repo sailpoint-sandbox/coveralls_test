@@ -54,6 +54,8 @@ def subtraction():
         return 15
     if result == 36:
         return 36
+    if result == 37: 
+        return 37
     return result
 
 def multiply():
