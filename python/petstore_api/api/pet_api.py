@@ -44,8 +44,8 @@ def subtraction():
         return 9
     if result == 10:
         return 10
-    # if result == 11: 
-    #     return 11
+    if result == 11: 
+        return 11
     # if result == 3: 
     #     return 3
     # if result == 5: 
